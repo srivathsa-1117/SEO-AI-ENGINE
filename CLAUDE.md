@@ -869,20 +869,20 @@ mcp__aios.run_seo_crawler(
   "mcpServers": {
     "pagespeed": {
       "command": "node",
-      "args": ["c:/Users/HP/OneDrive/Desktop/SEO ai agency skills/tools/pagespeed-mcp/dist/index.js"],
-      "env": {"GOOGLE_API_KEY": "AIzaSyDwznCFpcMeqlpX8-z_CvrAQSEe2R0Pjx4"}
+      "args": ["c:/Users/HP/OneDrive/Desktop/SEO AI ENGINE/tools/pagespeed-mcp/dist/index.js"],
+      "env": {"GOOGLE_API_KEY": "your_google_api_key_here"}
     },
     "gsc": {
       "command": "python",
-      "args": ["c:/Users/HP/OneDrive/Desktop/SEO ai agency skills/tools/mcp-gsc/gsc_server.py"],
+      "args": ["c:/Users/HP/OneDrive/Desktop/SEO AI ENGINE/tools/mcp-gsc/gsc_server.py"],
       "env": {
-        "GSC_TOKEN_PATH": "c:/Users/HP/OneDrive/Desktop/SEO ai agency skills/tools/mcp-gsc/token.pickle",
-        "GSC_CREDENTIALS_PATH": "c:/Users/HP/OneDrive/Desktop/SEO ai agency skills/tools/mcp-gsc/gsc_credentials.json"
+        "GSC_TOKEN_PATH": "c:/Users/HP/OneDrive/Desktop/SEO AI ENGINE/tools/mcp-gsc/token.pickle",
+        "GSC_CREDENTIALS_PATH": "c:/Users/HP/OneDrive/Desktop/SEO AI ENGINE/tools/mcp-gsc/gsc_credentials.json"
       }
     },
     "aios-governance": {
       "command": "python",
-      "args": ["c:/Users/HP/OneDrive/Desktop/SEO ai agency skills/tools/fastmcp_server.py"]
+      "args": ["c:/Users/HP/OneDrive/Desktop/SEO AI ENGINE/tools/fastmcp_server.py"]
     }
   }
 }
