@@ -1,0 +1,307 @@
+# AI Crawler Governance for Example Brand
+# ==========================================
+# This file contains AI-specific robots.txt directives to control how
+# AI training models (OpenAI, Anthropic, Google, etc.) crawl your site.
+#
+# IMPORTANT: Merge these directives into your main robots.txt file at:
+# https://example.com/robots.txt
+#
+# Last Updated: 2026-03-27
+
+# =============================================================================
+# STRATEGY: Selective Access with Priority Content
+# =============================================================================
+# We ALLOW crawling of high-value content (case studies, service pages, blog)
+# We BLOCK low-value pages (thank you pages, staging, admin, drafts)
+# This ensures AI models train on our best work and cite authoritative pages.
+
+# =============================================================================
+# OpenAI (GPTBot) - ChatGPT Training & Search
+# =============================================================================
+User-agent: GPTBot
+Allow: /case-studies                    # HIGH PRIORITY - Showcase expertise
+Allow: /performance-marketing           # Service pages
+Allow: /search-engine-optimization      # Service pages
+Allow: /web-development                 # Service pages
+Allow: /blogs/                          # Thought leadership
+Allow: /about                           # Company info
+Allow: /contact                         # Contact info
+Allow: /llms.txt                        # AI governance feed
+
+Disallow: /thank-you                    # No value for training
+Disallow: /checkout                     # Private checkout flows
+Disallow: /cart                         # E-commerce states
+Disallow: /admin                        # Admin pages
+Disallow: /wp-admin                     # WordPress admin
+Disallow: /staging                      # Staging environment
+Disallow: /?s=                          # Search results pages
+Disallow: /*?utm_                       # Tracking parameters
+Disallow: /drafts                       # Unpublished content
+
+# =============================================================================
+# OpenAI (ChatGPT-User) - Real-Time Search in ChatGPT
+# =============================================================================
+User-agent: ChatGPT-User
+Allow: /case-studies                    # HIGH PRIORITY
+Allow: /performance-marketing
+Allow: /search-engine-optimization
+Allow: /web-development
+Allow: /blogs/
+Allow: /about
+Allow: /contact
+Allow: /llms.txt
+
+Disallow: /thank-you
+Disallow: /checkout
+Disallow: /cart
+Disallow: /admin
+Disallow: /wp-admin
+Disallow: /*?utm_
+
+# =============================================================================
+# Anthropic (ClaudeBot) - Claude AI Training
+# =============================================================================
+User-agent: ClaudeBot
+Allow: /case-studies                    # HIGH PRIORITY - Best work
+Allow: /performance-marketing
+Allow: /search-engine-optimization
+Allow: /web-development
+Allow: /blogs/
+Allow: /about
+Allow: /contact
+Allow: /llms.txt
+
+Disallow: /thank-you
+Disallow: /checkout
+Disallow: /cart
+Disallow: /admin
+Disallow: /wp-admin
+Disallow: /staging
+Disallow: /*?utm_
+Disallow: /drafts
+
+# =============================================================================
+# Google (Google-Extended) - Bard/Gemini Training (NOT Search)
+# =============================================================================
+# NOTE: Google-Extended is for Gemini/Bard training ONLY.
+# Standard Googlebot still crawls for search rankings.
+User-agent: Google-Extended
+Allow: /case-studies                    # HIGH PRIORITY
+Allow: /performance-marketing
+Allow: /search-engine-optimization
+Allow: /web-development
+Allow: /blogs/
+Allow: /about
+Allow: /contact
+Allow: /llms.txt
+
+Disallow: /thank-you
+Disallow: /checkout
+Disallow: /cart
+Disallow: /admin
+Disallow: /wp-admin
+Disallow: /*?utm_
+
+# =============================================================================
+# Perplexity AI (PerplexityBot) - Perplexity Answer Engine
+# =============================================================================
+User-agent: PerplexityBot
+Allow: /case-studies                    # HIGH PRIORITY - Citation-worthy
+Allow: /performance-marketing
+Allow: /search-engine-optimization
+Allow: /web-development
+Allow: /blogs/
+Allow: /about
+Allow: /contact
+Allow: /llms.txt
+
+Disallow: /thank-you
+Disallow: /checkout
+Disallow: /cart
+Disallow: /admin
+Disallow: /*?utm_
+
+# =============================================================================
+# Meta AI (FacebookBot) - Meta AI Training
+# =============================================================================
+User-agent: FacebookBot
+Allow: /case-studies
+Allow: /performance-marketing
+Allow: /search-engine-optimization
+Allow: /web-development
+Allow: /blogs/
+Allow: /about
+Allow: /contact
+Allow: /llms.txt
+
+Disallow: /thank-you
+Disallow: /checkout
+Disallow: /cart
+Disallow: /admin
+Disallow: /*?utm_
+
+# =============================================================================
+# Cohere AI (cohere-ai) - Cohere LLM Training
+# =============================================================================
+User-agent: cohere-ai
+Allow: /case-studies
+Allow: /performance-marketing
+Allow: /search-engine-optimization
+Allow: /web-development
+Allow: /blogs/
+Allow: /about
+Allow: /llms.txt
+
+Disallow: /thank-you
+Disallow: /checkout
+Disallow: /cart
+Disallow: /admin
+Disallow: /*?utm_
+
+# =============================================================================
+# Anthropic Extensions (Claude Enterprise, etc.)
+# =============================================================================
+User-agent: anthropic-ai
+Allow: /case-studies
+Allow: /performance-marketing
+Allow: /search-engine-optimization
+Allow: /web-development
+Allow: /blogs/
+Allow: /llms.txt
+
+Disallow: /thank-you
+Disallow: /checkout
+Disallow: /cart
+Disallow: /admin
+
+# =============================================================================
+# Diffbot (Web Data Extraction for AI)
+# =============================================================================
+User-agent: Diffbot
+Allow: /case-studies
+Allow: /blogs/
+Disallow: /admin
+Disallow: /checkout
+
+# =============================================================================
+# Common Crawl (Open Dataset Used for AI Training)
+# =============================================================================
+User-agent: CCBot
+Allow: /case-studies                    # HIGH PRIORITY
+Allow: /performance-marketing
+Allow: /search-engine-optimization
+Allow: /web-development
+Allow: /blogs/
+Allow: /about
+Allow: /llms.txt
+
+Disallow: /thank-you
+Disallow: /checkout
+Disallow: /cart
+Disallow: /admin
+Disallow: /*?utm_
+
+# =============================================================================
+# BLOCK AGGRESSIVE AI SCRAPERS (Known Bad Actors)
+# =============================================================================
+# These crawlers ignore robots.txt or scrape aggressively for training data
+# without proper attribution or opt-out mechanisms.
+
+User-agent: CCBot
+Disallow: /                             # Block CommonCrawl if you want full control
+
+User-agent: omgili
+Disallow: /
+
+User-agent: omgilibot
+Disallow: /
+
+User-agent: peer39_crawler
+Disallow: /
+
+User-agent: peer39_crawler/1.0
+Disallow: /
+
+# =============================================================================
+# CRAWL RATE LIMITS (Prevent Server Overload)
+# =============================================================================
+# These directives slow down AI crawlers to prevent DDoS-like behavior
+
+# OpenAI rate limit: 1 request per 10 seconds
+User-agent: GPTBot
+Crawl-delay: 10
+
+# Anthropic rate limit: 1 request per 5 seconds
+User-agent: ClaudeBot
+Crawl-delay: 5
+
+# Perplexity rate limit: 1 request per 5 seconds
+User-agent: PerplexityBot
+Crawl-delay: 5
+
+# Common Crawl rate limit: 1 request per 15 seconds
+User-agent: CCBot
+Crawl-delay: 15
+
+# =============================================================================
+# ALLOW STANDARD SEARCH ENGINE CRAWLERS (CRITICAL!)
+# =============================================================================
+# NEVER block standard Googlebot, Bingbot, etc. - they power search rankings!
+
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: Slurp
+Allow: /
+
+User-agent: DuckDuckBot
+Allow: /
+
+User-agent: Baiduspider
+Allow: /
+
+User-agent: YandexBot
+Allow: /
+
+# =============================================================================
+# SITEMAP REFERENCE (Helps AI Crawlers Find Priority Content)
+# =============================================================================
+Sitemap: https://example.com/sitemap.xml
+Sitemap: https://example.com/llms.txt
+
+# =============================================================================
+# IMPLEMENTATION NOTES
+# =============================================================================
+#
+# 1. MERGE INTO MAIN ROBOTS.TXT
+#    Copy these directives into your existing robots.txt file at:
+#    https://example.com/robots.txt
+#
+# 2. UPLOAD LLMS.TXT TO ROOT
+#    Upload the llms.txt file to:
+#    https://example.com/llms.txt
+#
+# 3. TEST WITH ROBOTS.TXT TESTER
+#    Google Search Console > robots.txt Tester
+#    Test URLs with different user-agents
+#
+# 4. MONITOR CRAWL LOGS
+#    Check server logs for AI crawler activity:
+#    grep "GPTBot\|ClaudeBot\|PerplexityBot" /var/log/nginx/access.log
+#
+# 5. UPDATE QUARTERLY
+#    Review and update AI governance as new crawlers emerge
+#
+# =============================================================================
+# REFERENCES
+# =============================================================================
+# - OpenAI GPTBot: https://platform.openai.com/docs/gptbot
+# - Anthropic ClaudeBot: https://support.anthropic.com/en/articles/8896518-does-anthropic-crawl-data-from-the-web-and-how-can-site-owners-block-the-crawler
+# - Google Extended: https://developers.google.com/search/docs/crawling-indexing/overview-google-crawlers
+# - Perplexity: https://docs.perplexity.ai/docs/perplexity-bot
+# - llms.txt standard: https://llmstxt.org/
+
+# END OF AI GOVERNANCE FILE

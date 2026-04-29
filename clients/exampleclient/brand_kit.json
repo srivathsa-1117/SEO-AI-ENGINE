@@ -1,0 +1,62 @@
+{
+  "client_info": {
+    "client_name": "The Example Brand",
+    "website_url": "https://example.com",
+    "industry": "Digital Marketing Agency (Growth Marketing)",
+    "location": "Bengaluru, India",
+    "onboarding_date": "2026-03-10",
+    "status": "active"
+  },
+
+  "brand_voice": {
+    "tone": ["professional", "approachable", "confident", "bold", "performance-driven", "fast-moving"],
+    "persona": "The outcomes-obsessed growth expert. We don't just execute tasks, we take ownership and scale bolder brands.",
+    "writing_style_notes": "Use active voice, be direct. Focus on funnels, revenue, testing, and scaling systems.",
+    "cta_style": "Book a Discovery Call / Let's start your growth journey"
+  },
+
+  "target_audience": {
+    "primary_persona": "Founders and Marketing Directors of B2B & D2C Brands looking to scale their revenue.",
+    "pain_points": ["Stagnant revenue", "Inefficient ad spend", "Need full-funnel growth systems", "Poor SEO"],
+    "demographics": {
+      "age_range": "30-55",
+      "job_titles": ["Founder", "CEO", "Marketing Director", "CMO", "E-commerce Owner"],
+      "platforms_they_use": ["LinkedIn", "Twitter", "Instagram"]
+    }
+  },
+
+  "seo_settings": {
+    "primary_keywords": ["growth marketing agency", "digital marketing agency bangalore", "performance marketing agency india", "seo services bangalore", "web development agency"],
+    "negative_keywords": [],
+    "target_locations": ["Bengaluru", "Bangalore", "India"],
+    "language": "en",
+    "content_pillars": ["Performance Marketing", "SEO", "Web Development", "Growth Strategy"]
+  },
+
+  "seo_targets": {
+    "competitors": [
+      {"name": "Social Beat", "website_url": "https://www.socialbeat.in"},
+      {"name": "Ralecon", "website_url": "https://www.ralecon.com"},
+      {"name": "GroCat", "website_url": "https://www.grocat.in"},
+      {"name": "First Launch", "website_url": "https://firstlaunch.in"}
+    ]
+  },
+
+  "competitors": {
+    "top_3_competitors": ["Social Beat", "Ralecon", "GroCat", "First Launch"]
+  },
+
+  "technical_settings": {
+    "cms": "WordPress/Shopify",
+    "gsc_connected": false,
+    "ga4_connected": false,
+    "sitemap_url": "https://example.com/sitemap.xml",
+    "robots_txt_url": "https://example.com/robots.txt"
+  },
+
+  "reporting": {
+    "report_frequency": "monthly",
+    "report_recipients": [],
+    "custom_report_template": null
+  }
+}

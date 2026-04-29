@@ -1,0 +1,28 @@
+# Environments
+.env
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Output & Scratch
+.tmp/
+clients/*/active_campaigns/*
+clients/*/audit_history/*
+clients/*/reports/*
+!clients/_template/
+
+# pagespeed-mcp cloned package — exclude heavy dirs from workspace scan
+tools/pagespeed-mcp/node_modules/
+tools/pagespeed-mcp/.git/
+
+# OS generated files
+.DS_Store
+Thumbs.db

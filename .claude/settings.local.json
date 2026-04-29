@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python dataforseo_client.py --test)",
+      "Bash(python serp_scraper.py --mode serp_top10 --keyword \"SEO agency India\" --output \".tmp/test_serp.json\")",
+      "Bash(python competitor_gap.py --client-url thedarenetwork.com --competitor-urls semrush.com --location-code 2840 --output \".tmp/test_gap.json\")",
+      "Bash(python tools/framework_detector.py --url https://reformdentalcare.com/ --output .tmp/reformdentalcare_framework.json)",
+      "Bash(python -c \"import json; d=json.load\\(open\\(''.tmp/reformdentalcare_framework.json''\\)\\); print\\(json.dumps\\(d, indent=2\\)\\)\")",
+      "Bash(python tools/seo_crawler.py --url https://reformdentalcare.com/ --no-js --max-pages 100 --timeout 300 --output .tmp/reformdentalcare_crawl_nojs.json)",
+      "Bash(pip install:*)",
+      "Bash(python tools/seo_crawler.py --url https://reformdentalcare.com/ --no-js --max-pages 100 --output .tmp/reformdentalcare_crawl_nojs.json)",
+      "Bash(python tools/schema_checker.py --url https://reformdentalcare.com/ --output .tmp/reformdentalcare_schema.json)",
+      "Bash(python tools/lighthouse_audit.py --url https://reformdentalcare.com/ --strategy both --output .tmp/reformdentalcare_cwv.json)",
+      "Bash(python tools/serp_scraper.py --mode serp_top10 --keyword \"dental care reform PA dentist\" --output .tmp/reformdentalcare_serp.json)",
+      "Bash(python -c \"import json; d=json.load\\(open\\(''''.tmp/reformdentalcare_crawl_nojs.json''''\\)\\); print\\(json.dumps\\(d, indent=2\\)\\)\")",
+      "Bash(python -c \"import json; d=json.load\\(open\\(''.tmp/reformdentalcare_schema.json''\\)\\); print\\(json.dumps\\(d, indent=2\\)\\)\")",
+      "Bash(python -c \"import json; d=json.load\\(open\\(''.tmp/reformdentalcare_cwv.json''\\)\\); print\\(json.dumps\\(d, indent=2\\)\\)\")",
+      "WebFetch(domain:reformdentalcare.com)",
+      "Bash(python tools/on_page_analyzer.py --urls-file .tmp/reformdentalcare_crawl_nojs.json --output .tmp/reformdentalcare_onpage.json)",
+      "Bash(python tools/on_page_analyzer.py --help)",
+      "Bash(python tools/on_page_analyzer.py --urls \"https://reformdentalcare.com/,https://reformdentalcare.com/services/,https://reformdentalcare.com/about-best-dentist-hsr-layout-bangalore/,https://reformdentalcare.com/contact-us/,https://reformdentalcare.com/blogs/\" --keyword \"dental clinic HSR Layout Bangalore\" --output .tmp/reformdentalcare_onpage.json)",
+      "Bash(python tools/serp_scraper.py --mode serp_top10 --keyword \"best dentist HSR Layout Bangalore\" --output .tmp/reformdentalcare_serp_local.json)",
+      "Bash(python -c \"import json; d=json.load\\(open\\(''.tmp/reformdentalcare_onpage.json''\\)\\); print\\(json.dumps\\(d, indent=2\\)\\)\")",
+      "Bash(python -c \"import json; d=json.load\\(open\\(''.tmp/reformdentalcare_serp_local.json''\\)\\); print\\(json.dumps\\(d, indent=2\\)\\)\")",
+      "Bash(python tools/aeo_grader.py --url https://reformdentalcare.com/ --output .tmp/reformdentalcare_aeo.json)",
+      "Bash(python tools/serp_scraper.py --mode autosuggest --keyword \"dental clinic HSR Layout\" --output .tmp/reformdentalcare_autosuggest.json)",
+      "Bash(python tools/report_builder.py --url https://reformdentalcare.com/ --type audit)",
+      "Bash(python -c \"import json; d=json.load\\(open\\(''.tmp/reformdentalcare_crawl_nojs.json''\\)\\); print\\(list\\(d.keys\\(\\)\\)\\)\")",
+      "Bash(python -c \"import json; d=json.load\\(open\\(''.tmp/reformdentalcare_crawl_nojs.json''\\)\\); print\\(json.dumps\\(d.get\\(''summary'', {}\\), indent=2\\)\\)\")"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -1,0 +1,40 @@
+# SEO AI OS — Python Dependencies
+# Install all with: pip install -r requirements.txt
+
+# --- Web Scraping & Crawling ---
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+pytrends>=4.9.0          # Google Trends (free, no API key needed)
+playwright>=1.40.0       # Headless browser for SERP scraping and JS rendering
+python-docx>=1.1.0       # Word document generation for audit reports
+
+# --- Data Processing ---
+pandas>=2.0.0            # Data manipulation and analysis
+openpyxl>=3.1.0          # Excel file support for pandas
+
+# --- Machine Learning & NLP ---
+scikit-learn>=1.3.0      # ML clustering for /competitor_gap NLP workflows
+numpy>=1.24.0            # ML clustering array manipulation
+sentence-transformers>=2.2.0  # Semantic similarity for keyword clustering
+transformers>=4.30.0     # HuggingFace transformers for NLP
+textstat>=0.7.0          # Readability scoring
+torch>=2.0.0             # PyTorch backend for transformers (CPU version)
+
+# --- Geospatial & Visualization ---
+folium>=0.14.0           # Interactive maps for geospatial search heatmaps
+geopy>=2.4.0             # Geocoding for location-based SEO
+
+# --- PDF Report Generation ---
+reportlab>=4.0.0
+markdown>=3.4.0
+
+# --- Environment Management ---
+python-dotenv>=1.0.0
+
+# --- AI/LLM Integration (Optional - for experimental features) ---
+# anthropic>=0.18.0      # Uncomment if using Claude API directly
+# openai>=1.12.0         # Uncomment if using OpenAI API
+
+# --- After installation, run: playwright install chromium
+# This downloads the Chromium browser needed for SERP scraping

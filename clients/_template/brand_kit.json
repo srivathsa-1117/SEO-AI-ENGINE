@@ -1,0 +1,75 @@
+{
+  "_instructions": "Copy this folder to clients/your_client_name/ and fill out all fields. This is the single source of truth that all AI agents read before running any task for this client.",
+
+  "client_info": {
+    "client_name": "YOUR CLIENT NAME",
+    "website_url": "https://www.example.com",
+    "industry": "e.g. SaaS / E-commerce / Local Services",
+    "location": "City, Country (for local SEO targeting)",
+    "onboarding_date": "YYYY-MM-DD",
+    "status": "active"
+  },
+
+  "brand_voice": {
+    "tone": ["professional", "approachable"],
+    "_tone_options": ["professional", "approachable", "authoritative", "playful", "technical", "conversational"],
+    "persona": "e.g. A trusted advisor speaking to small business owners",
+    "writing_style_notes": "e.g. Use short sentences. Avoid jargon. Always lead with the benefit.",
+    "cta_style": "e.g. 'Get Started Today' / 'Book a Free Call' / 'Try It Free'"
+  },
+
+  "target_audience": {
+    "primary_persona": "e.g. Marketing managers at B2B SaaS companies with 50-200 employees",
+    "pain_points": [
+      "e.g. Struggling to rank for competitive keywords",
+      "e.g. Low organic traffic despite publishing regularly"
+    ],
+    "demographics": {
+      "age_range": "25-45",
+      "job_titles": ["Marketing Manager", "CEO", "Founder"],
+      "platforms_they_use": ["LinkedIn", "Google", "Reddit"]
+    }
+  },
+
+  "seo_settings": {
+    "primary_keywords": [
+      "e.g. project management software",
+      "e.g. best CRM for small business"
+    ],
+    "negative_keywords": [
+      "e.g. free",
+      "e.g. crack",
+      "e.g. pirate"
+    ],
+    "target_locations": ["e.g. United States", "e.g. United Kingdom"],
+    "language": "en",
+    "content_pillars": [
+      "e.g. Productivity Tips",
+      "e.g. Team Management",
+      "e.g. Software Reviews"
+    ]
+  },
+
+  "competitors": {
+    "top_3_competitors": [
+      {"name": "Competitor A", "url": "https://competitor-a.com"},
+      {"name": "Competitor B", "url": "https://competitor-b.com"},
+      {"name": "Competitor C", "url": "https://competitor-c.com"}
+    ]
+  },
+
+  "technical_settings": {
+    "cms": "e.g. WordPress / Webflow / Shopify / Custom",
+    "gsc_connected": false,
+    "ga4_connected": false,
+    "sitemap_url": "https://www.example.com/sitemap.xml",
+    "robots_txt_url": "https://www.example.com/robots.txt"
+  },
+
+  "reporting": {
+    "report_frequency": "monthly",
+    "report_recipients": ["client@example.com"],
+    "custom_report_template": null,
+    "_note": "Set custom_report_template to the filename in /templates/ if client has a preferred report format"
+  }
+}
