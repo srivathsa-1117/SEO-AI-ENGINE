@@ -18,8 +18,16 @@ Generate a fully SEO-optimized, AEO/GEO-ready article that ranks #1. The output 
 
 You must write like a Senior Subject Matter Expert, not an AI. 
 
-**1. BANNED AI VOCABULARY:**
+**1. BANNED AI VOCABULARY & PUNCTUATION:**
 Do NOT use these words under any circumstances: *delve, moreover, furthermore, tapestry, paramount, seamless, dynamic, robust, landscape, testament, elevate, unleash, unlock, navigate, symphony, beacon, in today's digital age, in conclusion, to summarize.*
+
+**BANNED PUNCTUATION — Em Dash (—):**
+NEVER use em dashes (—) in any content. This is a top AI-detection signal. Replace with:
+- A period (split into two sentences)
+- A comma
+- Parentheses
+- A colon
+- Rewrite the sentence entirely
 
 **2. Burstiness & Perplexity:**
 - Vary your sentence lengths drastically. Use very short, punchy sentences (3-5 words). Follow them with longer, descriptive sentences.
