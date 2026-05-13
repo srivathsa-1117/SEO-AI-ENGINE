@@ -386,6 +386,79 @@ class DataForSEOClient:
         }
 
 
+    def get_page_onpage(self, url: str, enable_javascript: bool = True) -> dict:
+        """
+        Fetch and analyse a URL via DataForSEO /on_page/instant_pages.
+        Bypasses Akamai / Cloudflare using DataForSEO's distributed browser fleet.
+        Cost: ~$0.01 per page.
+
+        Returns a flat dict with all key on-page SEO fields so callers
+        can use it directly without parsing HTML.
+        """
+        payload = [{
+            "url": url,
+            "enable_javascript": enable_javascript,
+            "enable_browser_rendering": True,
+            "load_resources": False,
+            "check_spell": False,
+            "calculate_keyword_density": False,
+        }]
+
+        try:
+            response = self._make_request("/on_page/instant_pages", payload)
+
+            tasks = response.get("tasks", [])
+            if not tasks or not tasks[0].get("result"):
+                return {"error": "No result from DataForSEO On-Page API", "url": url}
+
+            result_set = tasks[0]["result"][0]
+            items = result_set.get("items", [])
+            if not items:
+                return {"error": "No pages returned by DataForSEO On-Page API", "url": url}
+
+            item = items[0]
+            meta    = item.get("meta", {})
+            checks  = item.get("checks", {})
+            content = item.get("content", {})
+            htags   = meta.get("htags", {})
+
+            # Schema types (DataForSEO parses these from JSON-LD / Microdata)
+            schema_types = []
+            for sd in meta.get("structured_data", {}).get("items", []) if isinstance(meta.get("structured_data"), dict) else []:
+                t = sd.get("@type") or sd.get("type")
+                if t:
+                    (schema_types.extend(t) if isinstance(t, list) else schema_types.append(t))
+
+            images_missing_alt = sum(
+                1 for img in meta.get("images", []) if not img.get("alt")
+            )
+
+            return {
+                "url":                item.get("url", url),
+                "status_code":        item.get("status_code", 0),
+                "title":              meta.get("title") or "",
+                "meta_description":   meta.get("description") or "",
+                "h1":                 htags.get("h1") or [],
+                "h2":                 htags.get("h2") or [],
+                "h3":                 htags.get("h3") or [],
+                "canonical":          meta.get("canonical") or "",
+                "robots":             meta.get("robots") or "index,follow",
+                "noindex":            not meta.get("index", True),
+                "schema_types":       schema_types,
+                "word_count":         content.get("plain_text_word_count", 0),
+                "images_missing_alt": images_missing_alt,
+                "internal_links":     meta.get("links_internal") or [],
+                "external_links":     meta.get("links_external") or [],
+                "onpage_score":       item.get("onpage_score", 0),
+                "page_timing":        item.get("page_timing") or {},
+                "checks":             checks,
+                "error":              None,
+            }
+
+        except Exception as e:
+            return {"error": str(e), "url": url}
+
+
 def test_connection():
     """Test DataForSEO API connection."""
     try:

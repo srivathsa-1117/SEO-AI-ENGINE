@@ -5,7 +5,88 @@ Ensures consistency across all tools.
 """
 
 import re
+import os
+import sys
+import json
 from urllib.parse import urlparse
+
+
+def smart_fetch(url: str, timeout: int = 25) -> dict:
+    """
+    Fetch a URL with automatic bot-bypass fallback.
+
+    Tier 1 — curl_cffi (Chrome 120 TLS fingerprint): bypasses Akamai/Cloudflare
+              TLS-fingerprint checks with zero cost. Returns raw HTML.
+    Tier 2 — DataForSEO On-Page instant_pages API: uses distributed headless
+              browsers that pass every JS challenge. Returns pre-parsed SEO data.
+
+    Return schema:
+        {
+            "success":     bool,
+            "html":        str | None,   # raw HTML (tiers 1 only)
+            "status_code": int,
+            "url":         str,          # final URL after redirects
+            "method":      str,          # "curl_cffi" | "dataforseo" | None
+            "parsed_data": dict | None,  # structured fields from DataForSEO
+            "error":       str | None,
+        }
+    Tools that receive parsed_data should use it directly; otherwise parse html
+    with BeautifulSoup as usual.
+    """
+    # ── Tier 1: curl_cffi (Chrome TLS impersonation, free) ──────────────────
+    try:
+        from curl_cffi import requests as cffi_req
+        resp = cffi_req.get(
+            url,
+            impersonate="chrome120",
+            timeout=timeout,
+            allow_redirects=True,
+        )
+        if resp.status_code == 200 and len(resp.text) > 500:
+            return {
+                "success": True,
+                "html": resp.text,
+                "status_code": resp.status_code,
+                "url": str(resp.url),
+                "method": "curl_cffi",
+                "parsed_data": None,
+                "error": None,
+            }
+    except ImportError:
+        pass  # not installed — fall through
+    except Exception as e:
+        print(f"   [smart_fetch/curl_cffi] {e}")
+
+    # ── Tier 2: DataForSEO On-Page API (enterprise bypass) ──────────────────
+    try:
+        tools_dir = os.path.dirname(os.path.abspath(__file__))
+        if tools_dir not in sys.path:
+            sys.path.insert(0, tools_dir)
+        from dataforseo_client import DataForSEOClient
+        client = DataForSEOClient()
+        data = client.get_page_onpage(url)
+        if data and not data.get("error"):
+            return {
+                "success": True,
+                "html": None,
+                "status_code": data.get("status_code", 200),
+                "url": data.get("url", url),
+                "method": "dataforseo",
+                "parsed_data": data,
+                "error": None,
+            }
+    except Exception as e:
+        print(f"   [smart_fetch/dataforseo] {e}")
+
+    return {
+        "success": False,
+        "html": None,
+        "status_code": 0,
+        "url": url,
+        "method": None,
+        "parsed_data": None,
+        "error": f"All fetch methods failed for {url}",
+    }
 
 
 def url_to_slug(url: str) -> str:

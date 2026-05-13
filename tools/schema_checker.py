@@ -10,9 +10,23 @@ Usage:
 
 import argparse
 import json
+import sys
 import time
 from pathlib import Path
 from datetime import datetime
+
+# Windows console UTF-8 fix (handles ✓ ✗ → characters)
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except AttributeError:
+        pass
+
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from utils import smart_fetch
 
 try:
     import requests
@@ -36,14 +50,60 @@ def check_schema(url: str) -> dict:
     }
 
     try:
-        headers = {"User-Agent": "Mozilla/5.0 (compatible; SEO-AI-OS-Schema-Checker/1.0)"}
-        resp = requests.get(url, headers=headers, timeout=15, allow_redirects=True)
-
-        if resp.status_code != 200:
-            result["findings"].append(f"ERROR: Cannot access page (HTTP {resp.status_code})")
+        fetch = smart_fetch(url)
+        if not fetch["success"]:
+            result["findings"].append(f"ERROR: Cannot fetch page - {fetch['error']}")
             return result
 
-        soup = BeautifulSoup(resp.text, "lxml")
+        # If DataForSEO returned pre-parsed data, extract schema types directly
+        if fetch["method"] == "dataforseo" and fetch.get("parsed_data"):
+            pd = fetch["parsed_data"]
+            result["schema_types"] = pd.get("schema_types", [])
+            score_points = 0
+            has_faq = "FAQPage" in result["schema_types"]
+            has_article = any(t in result["schema_types"] for t in ["Article", "BlogPosting", "NewsArticle"])
+            has_local_business = "LocalBusiness" in result["schema_types"]
+            has_breadcrumb = "BreadcrumbList" in result["schema_types"]
+            has_organization = "Organization" in result["schema_types"]
+            has_website = "WebSite" in result["schema_types"]
+            if result["schema_types"]:
+                result["findings"].append(f"Found schema types via DataForSEO: {', '.join(result['schema_types'])}")
+            else:
+                result["findings"].append("CRITICAL: No schema markup detected (via DataForSEO)")
+                result["recommendations"].append("Add at least Organization or WebSite schema")
+            if has_faq:
+                score_points += 20
+                result["findings"].append("✓ FAQPage schema detected (great for GEO)")
+            if has_article:
+                score_points += 15
+            if has_local_business:
+                score_points += 20
+                result["findings"].append("✓ LocalBusiness schema detected")
+            if has_breadcrumb:
+                score_points += 10
+                result["findings"].append("✓ BreadcrumbList schema detected")
+            if has_organization:
+                score_points += 15
+                result["findings"].append("✓ Organization schema detected")
+            if has_website:
+                score_points += 10
+                result["findings"].append("✓ WebSite schema detected")
+            if not has_faq:
+                result["recommendations"].append("Add FAQPage schema for GEO visibility")
+            if not has_organization:
+                result["recommendations"].append("Add Organization schema to homepage")
+            if not has_breadcrumb:
+                result["recommendations"].append("Add BreadcrumbList schema for better navigation understanding")
+            result["aeo_geo_score"] = min(score_points, 100)
+            result["rating"] = (
+                "Excellent" if score_points >= 80 else
+                "Good"      if score_points >= 60 else
+                "Fair"      if score_points >= 40 else "Poor"
+            )
+            result["findings"].append(f"[INFO] Data fetched via DataForSEO On-Page API (bot protection bypass)")
+            return result
+
+        soup = BeautifulSoup(fetch["html"], "lxml")
         score_points = 0
         max_score = 100
 
@@ -155,7 +215,7 @@ def check_schema(url: str) -> dict:
         else:
             result["rating"] = "Poor"
 
-    except requests.exceptions.RequestException as e:
+    except Exception as e:
         result["findings"].append(f"ERROR: Cannot fetch page - {e}")
 
     return result
@@ -183,22 +243,23 @@ def main():
     print(f"[Schema Checker] Analyzing: {url}")
     result = check_schema(url)
 
-    # Print summary
-    print(f"\n=== AEO/GEO READINESS SCORE: {result['aeo_geo_score']}/100 ({result.get('rating', 'N/A')}) ===")
-    print("\nFindings:")
-    for finding in result["findings"]:
-        print(f"  {finding}")
-
-    if result["recommendations"]:
-        print("\nRecommendations:")
-        for rec in result["recommendations"]:
-            print(f"  • {rec}")
-
-    # Save output
+    # Save output FIRST (before any print that might fail on Windows console)
     output_path = args.output or f".tmp/schema_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(result, f, indent=2, ensure_ascii=False)
+
+    # Print summary (replace Unicode symbols for Windows console safety)
+    def safe(s): return s.replace("✓", "[OK]").replace("✗", "[X]").replace("→", "->")
+    print(f"\n=== AEO/GEO READINESS SCORE: {result['aeo_geo_score']}/100 ({result.get('rating', 'N/A')}) ===")
+    print("\nFindings:")
+    for finding in result["findings"]:
+        print(f"  {safe(finding)}")
+
+    if result["recommendations"]:
+        print("\nRecommendations:")
+        for rec in result["recommendations"]:
+            print(f"  - {safe(rec)}")
 
     print(f"\n[Output] Saved to: {output_path}")
 

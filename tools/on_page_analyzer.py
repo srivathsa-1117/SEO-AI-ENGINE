@@ -34,6 +34,12 @@ if sys.platform == 'win32':
         import codecs
         sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
 
+import os as _os
+_sys_path_tools = _os.path.dirname(_os.path.abspath(__file__))
+if _sys_path_tools not in sys.path:
+    sys.path.insert(0, _sys_path_tools)
+from utils import smart_fetch
+
 try:
     import requests
     from bs4 import BeautifulSoup
@@ -50,33 +56,23 @@ TITLE_MIN, TITLE_MAX = 50, 60
 META_MIN, META_MAX = 120, 160
 
 
-def fetch_with_retry(url: str, max_retries: int = 3) -> Optional[requests.Response]:
-    """Fetch URL with automatic retry and exponential backoff."""
-    for attempt in range(max_retries):
-        try:
-            resp = requests.get(url, headers=HEADERS, timeout=15, allow_redirects=True)
-            if resp.status_code == 429:  # Rate limited
-                wait_time = (2 ** attempt) * 5  # 5s, 10s, 20s
-                if attempt < max_retries - 1:
-                    print(f"   [WARNING]  Rate limited, waiting {wait_time}s before retry...")
-                    time.sleep(wait_time)
-                    continue
-            return resp
-        except requests.exceptions.Timeout:
-            if attempt < max_retries - 1:
-                print(f"   [WARNING]  Timeout, retry {attempt + 1}/{max_retries}...")
-                time.sleep(2 ** attempt)
-            else:
-                raise
-        except requests.exceptions.ConnectionError as e:
-            if attempt < max_retries - 1:
-                print(f"   [WARNING]  Connection error, retry {attempt + 1}/{max_retries}...")
-                time.sleep(2 ** attempt)
-            else:
-                raise
-        except Exception as e:
-            raise
-    return None
+def fetch_with_retry(url: str, max_retries: int = 3):
+    """
+    Fetch URL using smart_fetch (curl_cffi → DataForSEO fallback).
+    Returns a duck-typed object with .status_code and .text,
+    or a dict with parsed_data when DataForSEO was used.
+    """
+    result = smart_fetch(url, timeout=25)
+    if result["success"]:
+        return result  # caller checks result["html"] vs result["parsed_data"]
+    # Last-resort: plain requests (original behaviour for non-bot-protected sites)
+    try:
+        resp = requests.get(url, headers=HEADERS, timeout=15, allow_redirects=True)
+        return {"success": True, "html": resp.text, "status_code": resp.status_code,
+                "url": resp.url, "method": "requests", "parsed_data": None, "error": None}
+    except Exception as e:
+        return {"success": False, "html": None, "status_code": 0, "url": url,
+                "method": None, "parsed_data": None, "error": str(e)}
 
 
 def analyze_page(url: str, keyword: str = None) -> dict:
@@ -89,44 +85,75 @@ def analyze_page(url: str, keyword: str = None) -> dict:
     }
 
     try:
-        # Use retry wrapper
-        resp = fetch_with_retry(url)
-        if not resp:
-            result["error"] = "Failed to fetch after retries"
-            result["issues"].append("CRITICAL: Could not fetch page after 3 attempts")
+        fetch = fetch_with_retry(url)
+        if not fetch or not fetch.get("success"):
+            result["error"] = fetch.get("error", "Failed to fetch") if fetch else "Failed to fetch"
+            result["issues"].append("CRITICAL: Could not fetch page (bot protection or network error)")
             return result
 
-        result["status_code"] = resp.status_code
+        result["status_code"] = fetch.get("status_code", 0)
 
-        # Handle different HTTP status codes
-        if resp.status_code == 403:
-            result["error"] = "403 Forbidden - Site blocking automated requests"
-            result["issues"].append("CRITICAL: Site returned 403 Forbidden")
-            return result
-        elif resp.status_code == 404:
-            result["error"] = "404 Not Found - Page does not exist"
-            result["issues"].append("CRITICAL: Page returned 404 Not Found")
-            return result
-        elif resp.status_code == 429:
-            result["error"] = "429 Rate Limited - Too many requests"
-            result["issues"].append("CRITICAL: Rate limited by server")
-            return result
-        elif resp.status_code >= 500:
-            result["error"] = f"{resp.status_code} Server Error"
-            result["issues"].append(f"CRITICAL: Server error {resp.status_code}")
-            return result
-        elif resp.status_code != 200:
-            result["error"] = f"HTTP {resp.status_code}"
-            result["issues"].append(f"CRITICAL: Page returned {resp.status_code}")
+        # ── DataForSEO path: use pre-parsed data directly ────────────────────
+        if fetch.get("parsed_data"):
+            pd = fetch["parsed_data"]
+            title    = pd.get("title") or ""
+            meta     = pd.get("meta_description") or ""
+            h1s      = pd.get("h1") or []
+            h2s      = pd.get("h2") or []
+            missing_alt = pd.get("images_missing_alt", 0)
+
+            title_issues = []
+            if not title:
+                title_issues.append("CRITICAL: Missing title tag")
+            else:
+                if len(title) < TITLE_MIN: title_issues.append(f"Title too short ({len(title)} chars)")
+                if len(title) > TITLE_MAX: title_issues.append(f"Title too long ({len(title)} chars)")
+                if keyword and keyword.lower() not in title.lower():
+                    title_issues.append(f"Keyword '{keyword}' not in title")
+            title_score = max(0, 100 - len(title_issues) * 25)
+            result["title"] = {"text": title, "length": len(title), "score": title_score, "issues": title_issues}
+
+            meta_issues = []
+            if not meta:
+                meta_issues.append("HIGH: Missing meta description")
+            else:
+                if len(meta) < META_MIN: meta_issues.append(f"Meta too short ({len(meta)} chars)")
+                if len(meta) > META_MAX: meta_issues.append(f"Meta too long ({len(meta)} chars)")
+                if keyword and keyword.lower() not in meta.lower():
+                    meta_issues.append(f"Keyword '{keyword}' not in meta description")
+            meta_score = max(0, 100 - len(meta_issues) * 30)
+            result["meta"] = {"text": meta, "length": len(meta), "score": meta_score, "issues": meta_issues}
+
+            heading_issues = []
+            if not h1s: heading_issues.append("CRITICAL: No H1 tag")
+            elif len(h1s) > 1: heading_issues.append(f"HIGH: Multiple H1 tags ({len(h1s)})")
+            if keyword and h1s and keyword.lower() not in h1s[0].lower():
+                heading_issues.append("MEDIUM: Keyword not in H1")
+            if not h2s: heading_issues.append("MEDIUM: No H2 tags")
+            heading_score = max(0, 100 - sum(30 if "CRITICAL" in i else 20 if "HIGH" in i else 10 for i in heading_issues))
+            result["headings"] = {"h1": h1s, "h2": h2s[:8], "h2_count": len(h2s), "score": heading_score, "issues": heading_issues}
+
+            result["images"] = {"total": "N/A", "missing_alt": missing_alt, "issue": f"{missing_alt} images missing alt" if missing_alt else None}
+            result["canonical"] = pd.get("canonical") or None
+            result["noindex"]   = pd.get("noindex", False)
+            result["word_count"] = pd.get("word_count", 0)
+            result["schema_types"] = pd.get("schema_types", [])
+            result["onpage_score_dataforseo"] = pd.get("onpage_score", 0)
+            result["fetch_method"] = "dataforseo"
+
+            all_issues = title_issues + meta_issues + heading_issues
+            result["issues"].extend(all_issues)
+            result["overall_score"] = int(sum([title_score, meta_score, heading_score]) / 3)
             return result
 
-        # Check if response has content
-        if not resp.text or len(resp.text) < 100:
+        # ── HTML path: existing BeautifulSoup logic ──────────────────────────
+        html = fetch.get("html", "")
+        if not html or len(html) < 100:
             result["error"] = "Empty or minimal HTML received"
             result["issues"].append("CRITICAL: Page returned empty content")
             return result
 
-        soup = BeautifulSoup(resp.text, "lxml")
+        soup = BeautifulSoup(html, "lxml")
         scores = []
 
         # --- Title ---
@@ -259,24 +286,6 @@ def analyze_page(url: str, keyword: str = None) -> dict:
 
         result["overall_score"] = int(sum(scores) / max(len(scores), 1))
 
-    except requests.exceptions.Timeout:
-        result["error"] = "Request timeout - Page took too long to respond"
-        result["issues"].append("CRITICAL: Timeout after 15 seconds")
-    except requests.exceptions.ConnectionError as e:
-        error_str = str(e).lower()
-        if "name or service not known" in error_str or "nodename nor servname" in error_str:
-            result["error"] = "DNS resolution failed - Domain may not exist"
-        elif "connection refused" in error_str:
-            result["error"] = "Connection refused - Server may be down"
-        else:
-            result["error"] = f"Connection error: {str(e)[:100]}"
-        result["issues"].append(f"CRITICAL: {result['error']}")
-    except requests.exceptions.TooManyRedirects:
-        result["error"] = "Too many redirects - Possible redirect loop"
-        result["issues"].append("CRITICAL: Redirect loop detected")
-    except requests.exceptions.RequestException as e:
-        result["error"] = f"Request error: {str(e)[:100]}"
-        result["issues"].append(f"CRITICAL: {result['error']}")
     except Exception as e:
         result["error"] = f"Unexpected error: {str(e)[:100]}"
         result["issues"].append(f"CRITICAL: Analysis failed - {result['error']}")

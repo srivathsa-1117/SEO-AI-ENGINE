@@ -27,6 +27,12 @@ from urllib.parse import urljoin, urlparse
 from datetime import datetime
 from typing import Optional, Dict, List
 
+import sys as _sys, os as _os
+_tools_dir = _os.path.dirname(_os.path.abspath(__file__))
+if _tools_dir not in _sys.path:
+    _sys.path.insert(0, _tools_dir)
+from utils import smart_fetch
+
 try:
     from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError, Error as PlaywrightError
     from bs4 import BeautifulSoup
@@ -81,7 +87,7 @@ def extract_schema_types(html: str, url: str) -> list:
         
     return list(schema_types)
 
-async def crawl_url_with_retry(page, url: str, timeout: int = 15000, max_retries: int = 3) -> dict:
+async def crawl_url_with_retry(page, url: str, timeout: int = 45000, max_retries: int = 3) -> dict:
     """Crawl a single URL with automatic retry and exponential backoff."""
     for attempt in range(max_retries):
         try:
@@ -108,7 +114,7 @@ async def crawl_url_with_retry(page, url: str, timeout: int = 15000, max_retries
     return {"url": url, "status_code": None, "error": "Unknown retry failure"}
 
 
-async def crawl_url(page, url: str, timeout: int = 15000) -> dict:
+async def crawl_url(page, url: str, timeout: int = 45000) -> dict:
     """Crawl a single URL and return its SEO metadata."""
     result = {
         "url": url,
@@ -252,10 +258,27 @@ async def async_crawl_site(start_url: str, sitemap_url: str = None, max_pages: i
     print(f"[Crawl] Starting Playwright async crawl of {start_url} (max {max_pages} pages)")
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        # Create a pool of pages based on concurrency
+        browser = await p.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+            ],
+        )
         context = await browser.new_context(
-            user_agent="SEO-AI-OS-Crawler/2.0 (Playwright Bot; contact@youragency.com)"
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            viewport={"width": 1280, "height": 800},
+            locale="en-US",
+        )
+        # Remove navigator.webdriver fingerprint
+        await context.add_init_script(
+            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
         )
         
         async def worker(worker_id):
@@ -375,42 +398,57 @@ def crawl_site_nojs(start_url: str, sitemap_url: str = None, max_pages: int = 50
         }
 
         try:
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
-            }
-            resp = requests.get(url, headers=headers, timeout=15, allow_redirects=True)
-            result["status_code"] = resp.status_code
-            result["final_url"] = resp.url
-
-            if resp.status_code != 200:
-                result["error"] = f"HTTP {resp.status_code}"
+            fetch = smart_fetch(url, timeout=25)
+            if not fetch["success"]:
+                result["error"] = fetch.get("error", "smart_fetch failed")
                 results.append(result)
                 continue
 
-            soup = BeautifulSoup(resp.text, "lxml")
+            result["status_code"] = fetch.get("status_code", 200)
+            result["final_url"]   = fetch.get("url", url)
+            result["fetch_method"] = fetch.get("method", "unknown")
 
-            # Title
+            # ── DataForSEO pre-parsed path ───────────────────────────────────
+            if fetch["method"] == "dataforseo" and fetch.get("parsed_data"):
+                pd = fetch["parsed_data"]
+                result["title"]            = pd.get("title") or None
+                result["meta_description"] = pd.get("meta_description") or None
+                result["h1"]               = pd.get("h1") or []
+                result["canonical"]        = pd.get("canonical") or None
+                result["noindex"]          = pd.get("noindex", False)
+                result["images_missing_alt"] = pd.get("images_missing_alt", 0)
+                result["word_count"]       = pd.get("word_count", 0)
+                result["schema_types"]     = pd.get("schema_types", [])
+                # DataForSEO doesn't return link graph for free — skip link expansion
+                result["internal_links"]   = pd.get("internal_links", [])
+                for link_obj in result["internal_links"]:
+                    link_url = link_obj.get("url") if isinstance(link_obj, dict) else str(link_obj)
+                    if link_url and urlparse(link_url).netloc == base_domain:
+                        if link_url not in visited and link_url not in to_visit:
+                            to_visit.append(link_url)
+                results.append(result)
+                time.sleep(0.5)
+                continue
+
+            # ── Raw HTML path (curl_cffi) ────────────────────────────────────
+            html = fetch["html"]
+            soup = BeautifulSoup(html, "lxml")
+
             title_tag = soup.find("title")
             result["title"] = title_tag.get_text(strip=True) if title_tag else None
 
-            # Meta description
             meta_desc = soup.find("meta", attrs={"name": "description"})
             result["meta_description"] = meta_desc.get("content", "").strip() if meta_desc else None
 
-            # H1s
             result["h1"] = [h.get_text(strip=True) for h in soup.find_all("h1")]
 
-            # Canonical
             canonical = soup.find("link", attrs={"rel": "canonical"})
             result["canonical"] = canonical.get("href") if canonical else None
 
-            # Noindex
             robots_meta = soup.find("meta", attrs={"name": re.compile("robots", re.I)})
             if robots_meta:
-                content = robots_meta.get("content", "").lower()
-                result["noindex"] = "noindex" in content
+                result["noindex"] = "noindex" in robots_meta.get("content", "").lower()
 
-            # Internal links
             for a in soup.find_all("a", href=True):
                 normalized = normalize_url(a["href"], url)
                 if normalized and urlparse(normalized).netloc == base_domain:
@@ -419,24 +457,13 @@ def crawl_site_nojs(start_url: str, sitemap_url: str = None, max_pages: int = 50
                     if normalized not in visited and normalized not in to_visit:
                         to_visit.append(normalized)
 
-            # Images missing alt
-            result["images_missing_alt"] = sum(
-                1 for img in soup.find_all("img") if not img.get("alt")
-            )
+            result["images_missing_alt"] = sum(1 for img in soup.find_all("img") if not img.get("alt"))
 
-            # Word count
             for tag in soup(["script", "style", "nav", "footer", "header", "noscript"]):
                 tag.decompose()
-            text = soup.get_text(separator=" ")
-            result["word_count"] = len(text.split())
+            result["word_count"] = len(soup.get_text(separator=" ").split())
+            result["schema_types"] = extract_schema_types(html, url)
 
-            # Schema types
-            result["schema_types"] = extract_schema_types(resp.text, url)
-
-        except requests.exceptions.Timeout:
-            result["error"] = "Timeout"
-        except requests.exceptions.RequestException as e:
-            result["error"] = f"Request error: {str(e)[:100]}"
         except Exception as e:
             result["error"] = f"Unexpected error: {str(e)[:100]}"
 

@@ -13,9 +13,24 @@ Usage:
 
 import argparse
 import json
+import sys
 import time
 from pathlib import Path
 from datetime import datetime
+
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except AttributeError:
+        pass
+
+import sys as _sys
+import os as _os
+_tools_dir = _os.path.dirname(_os.path.abspath(__file__))
+if _tools_dir not in _sys.path:
+    _sys.path.insert(0, _tools_dir)
+from utils import smart_fetch
 
 try:
     import requests
@@ -27,81 +42,110 @@ except ImportError:
     exit(1)
 
 
-def fetch_nojs(url: str, timeout: int = 15) -> dict:
-    """Fetch page HTML without JavaScript execution (Google's perspective)."""
-    try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
-        }
-        resp = requests.get(url, headers=headers, timeout=timeout, allow_redirects=True)
+def fetch_nojs(url: str, timeout: int = 25) -> dict:
+    """
+    Fetch page without JS using smart_fetch (curl_cffi → DataForSEO).
+    Represents Google's perspective: no JavaScript execution.
+    """
+    fetch = smart_fetch(url, timeout=timeout)
+    if not fetch["success"]:
+        return {"error": fetch["error"], "html": "", "word_count": 0}
 
-        if resp.status_code != 200:
-            return {"error": f"HTTP {resp.status_code}", "html": "", "word_count": 0}
-
-        soup = BeautifulSoup(resp.text, "lxml")
-
-        # Remove scripts, styles, nav, footer, header
-        for tag in soup(["script", "style", "nav", "footer", "header", "noscript"]):
-            tag.decompose()
-
-        text = soup.get_text(separator=" ", strip=True)
-        word_count = len(text.split())
-
+    # DataForSEO path — use word_count from parsed data
+    if fetch["method"] == "dataforseo" and fetch.get("parsed_data"):
+        pd = fetch["parsed_data"]
+        word_count = pd.get("word_count", 0)
         return {
-            "html": resp.text,
-            "text": text,
+            "html": "",  # no raw HTML from DataForSEO
+            "text": "",
             "word_count": word_count,
-            "status_code": resp.status_code
+            "status_code": pd.get("status_code", 200),
+            "parsed_data": pd,
+            "fetch_method": "dataforseo",
         }
 
-    except requests.exceptions.Timeout:
-        return {"error": "Timeout", "html": "", "word_count": 0}
-    except requests.exceptions.RequestException as e:
-        return {"error": str(e)[:100], "html": "", "word_count": 0}
+    # Raw HTML path — strip scripts and count words
+    html = fetch["html"]
+    soup = BeautifulSoup(html, "lxml")
+    for tag in soup(["script", "style", "nav", "footer", "header", "noscript"]):
+        tag.decompose()
+    text = soup.get_text(separator=" ", strip=True)
+    return {
+        "html": html,
+        "text": text,
+        "word_count": len(text.split()),
+        "status_code": fetch.get("status_code", 200),
+        "fetch_method": fetch["method"],
+    }
 
 
-def fetch_js(url: str, timeout: int = 30000) -> dict:
-    """Fetch page with JavaScript execution (User's perspective via Playwright)."""
+def fetch_js(url: str, timeout: int = 45000) -> dict:
+    """
+    Fetch page with JavaScript execution (User's perspective).
+    Tries Playwright first; falls back to DataForSEO On-Page API.
+    """
+    # ── Playwright (with stealth args) ──────────────────────────────────────
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
-
+            browser = p.chromium.launch(
+                headless=True,
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                ],
+            )
+            context = browser.new_context(
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                ),
+                viewport={"width": 1280, "height": 800},
+                locale="en-US",
+            )
+            context.add_init_script(
+                "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+            )
+            page = context.new_page()
             try:
                 response = page.goto(url, timeout=timeout, wait_until="domcontentloaded")
-
                 if not response or response.status != 200:
                     browser.close()
-                    return {"error": f"HTTP {response.status if response else 'No response'}", "html": "", "word_count": 0}
-
-                # Wait for JS frameworks to render
+                    raise RuntimeError(f"HTTP {response.status if response else 'No response'}")
                 page.wait_for_timeout(2000)
-
                 html = page.content()
                 soup = BeautifulSoup(html, "lxml")
-
-                # Remove scripts, styles, nav, footer, header
                 for tag in soup(["script", "style", "nav", "footer", "header", "noscript"]):
                     tag.decompose()
-
                 text = soup.get_text(separator=" ", strip=True)
-                word_count = len(text.split())
-
                 browser.close()
-
-                return {
-                    "html": html,
-                    "text": text,
-                    "word_count": word_count,
-                    "status_code": response.status
-                }
-
+                return {"html": html, "text": text, "word_count": len(text.split()),
+                        "status_code": response.status, "fetch_method": "playwright"}
             except Exception as e:
                 browser.close()
-                return {"error": str(e)[:100], "html": "", "word_count": 0}
+                raise
+    except Exception as playwright_err:
+        print(f"   [fetch_js] Playwright failed ({str(playwright_err)[:80]}), falling back to DataForSEO...")
 
+    # ── DataForSEO On-Page fallback (JS-rendered word count) ────────────────
+    try:
+        import sys as _s, os as _o
+        _d = _o.path.dirname(_o.path.abspath(__file__))
+        if _d not in _s.path:
+            _s.path.insert(0, _d)
+        from dataforseo_client import DataForSEOClient
+        client = DataForSEOClient()
+        data = client.get_page_onpage(url, enable_javascript=True)
+        if data and not data.get("error"):
+            word_count = data.get("word_count", 0)
+            return {"html": "", "text": "", "word_count": word_count,
+                    "status_code": data.get("status_code", 200), "fetch_method": "dataforseo",
+                    "parsed_data": data}
     except Exception as e:
-        return {"error": str(e)[:100], "html": "", "word_count": 0}
+        pass
+
+    return {"error": "Both Playwright and DataForSEO failed for JS fetch", "html": "", "word_count": 0}
 
 
 def detect_framework(nojs_html: str, js_html: str) -> dict:
