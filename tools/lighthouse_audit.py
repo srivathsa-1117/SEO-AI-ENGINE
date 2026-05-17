@@ -48,6 +48,46 @@ except ImportError:
 load_dotenv()
 
 
+def _parse_crux_metrics(loading_exp: dict) -> dict:
+    """
+    Extract CrUX p75 field data from loadingExperience block.
+
+    CrUX is real-user data (Chrome UX Report). It is immune to WAF throttling
+    because it measures actual visitors, not synthetic bots. Always prefer CrUX
+    over Lighthouse lab data for CWV reporting on production sites.
+
+    CLS percentile is in centiunits (divide by 100 to get actual value).
+    """
+    metrics = loading_exp.get("metrics", {})
+    if not metrics:
+        return {}
+
+    result = {"overall_category": loading_exp.get("overall_category")}
+
+    lcp = metrics.get("LARGEST_CONTENTFUL_PAINT_MS", {})
+    if lcp.get("percentile") is not None:
+        result["lcp_ms"] = lcp["percentile"]
+        result["lcp_s"] = round(lcp["percentile"] / 1000, 2)
+        result["lcp_category"] = lcp.get("category", "UNKNOWN")
+
+    inp = metrics.get("INTERACTION_TO_NEXT_PAINT", {})
+    if inp.get("percentile") is not None:
+        result["inp_ms"] = inp["percentile"]
+        result["inp_category"] = inp.get("category", "UNKNOWN")
+
+    cls = metrics.get("CUMULATIVE_LAYOUT_SHIFT_SCORE", {})
+    if cls.get("percentile") is not None:
+        result["cls"] = round(cls["percentile"] / 100, 3)
+        result["cls_category"] = cls.get("category", "UNKNOWN")
+
+    fcp = metrics.get("FIRST_CONTENTFUL_PAINT_MS", {})
+    if fcp.get("percentile") is not None:
+        result["fcp_ms"] = fcp["percentile"]
+        result["fcp_category"] = fcp.get("category", "UNKNOWN")
+
+    return result
+
+
 def run_lighthouse(url: str, strategy: str = "mobile", api_key: str = None, max_retries: int = 3) -> dict:
     """Run PageSpeed Insights API for a URL with retry logic."""
 
@@ -168,6 +208,12 @@ def run_lighthouse(url: str, strategy: str = "mobile", api_key: str = None, max_
 
     # Parse successful response
     try:
+        # --- CrUX field data (real users, WAF-immune) ---
+        crux_field_data = _parse_crux_metrics(data.get("loadingExperience", {}))
+        # Fall back to origin-level CrUX if URL-level has no data
+        if not crux_field_data:
+            crux_field_data = _parse_crux_metrics(data.get("originLoadingExperience", {}))
+
         lighthouse_result = data.get("lighthouseResult", {})
         categories = lighthouse_result.get("categories", {})
         audits = lighthouse_result.get("audits", {})
@@ -233,14 +279,19 @@ def run_lighthouse(url: str, strategy: str = "mobile", api_key: str = None, max_
                         "description": audit_data.get("description")
                     }
 
-        print(f"   [OK] Complete - Performance: {scores['performance']}/100")
+        crux_note = " | CrUX field data available" if crux_field_data else " | No CrUX data (URL too new or low traffic)"
+        print(f"   [OK] Complete - Performance: {scores['performance']}/100{crux_note}")
 
         return {
             "url": url,
             "strategy": strategy,
             "fetch_time": datetime.now().isoformat(),
             "scores": scores,
-            "core_web_vitals": cwv,
+            # Lighthouse lab data — synthetic, can be inflated by WAF/bot detection
+            "core_web_vitals_lab": cwv,
+            # CrUX field data — real user measurements, always prefer for reporting
+            "crux_field_data": crux_field_data,
+            "cwv_source": "crux_field_data" if crux_field_data else "lighthouse_lab",
             "seo_audits": seo_audits,
             "status": "success"
         }
@@ -269,12 +320,46 @@ def audit_url(url: str, output_path: str = None) -> dict:
     mobile_perf = results["mobile"].get("scores", {}).get("performance", 0)
     desktop_perf = results["desktop"].get("scores", {}).get("performance", 0)
 
+    # Prefer CrUX field data for CWV — it reflects real users and is WAF-immune.
+    # Lighthouse lab numbers are inflated on WAF-protected sites (e.g. Akamai, Cloudflare).
+    mobile_crux = results["mobile"].get("crux_field_data", {})
+    desktop_crux = results["desktop"].get("crux_field_data", {})
+    mobile_lab = results["mobile"].get("core_web_vitals_lab", {})
+
+    if mobile_crux:
+        cwv_source = "crux_field_data"
+        mobile_lcp_ms = mobile_crux.get("lcp_ms")
+        mobile_inp_ms = mobile_crux.get("inp_ms")
+        mobile_cls = mobile_crux.get("cls")
+        mobile_lcp_status = mobile_crux.get("lcp_category", "UNKNOWN")
+        mobile_inp_status = mobile_crux.get("inp_category", "UNKNOWN")
+        mobile_cls_status = mobile_crux.get("cls_category", "UNKNOWN")
+        desktop_lcp_ms = desktop_crux.get("lcp_ms")
+        desktop_lcp_status = desktop_crux.get("lcp_category", "UNKNOWN")
+    else:
+        cwv_source = "lighthouse_lab"
+        mobile_lcp_ms = mobile_lab.get("lcp")
+        mobile_inp_ms = mobile_lab.get("inp")
+        mobile_cls = mobile_lab.get("cls")
+        mobile_lcp_status = mobile_lab.get("lcp_status", "Unknown")
+        mobile_inp_status = mobile_lab.get("inp_status", "Unknown")
+        mobile_cls_status = mobile_lab.get("cls_status", "Unknown")
+        desktop_lab = results["desktop"].get("core_web_vitals_lab", {})
+        desktop_lcp_ms = desktop_lab.get("lcp")
+        desktop_lcp_status = desktop_lab.get("lcp_status", "Unknown")
+
     results["summary"] = {
         "mobile_performance": mobile_perf,
         "desktop_performance": desktop_perf,
-        "mobile_lcp_ms": results["mobile"].get("core_web_vitals", {}).get("lcp"),
-        "mobile_cls": results["mobile"].get("core_web_vitals", {}).get("cls"),
-        "mobile_inp_ms": results["mobile"].get("core_web_vitals", {}).get("inp"),
+        "cwv_source": cwv_source,
+        "mobile_lcp_ms": mobile_lcp_ms,
+        "mobile_lcp_status": mobile_lcp_status,
+        "mobile_inp_ms": mobile_inp_ms,
+        "mobile_inp_status": mobile_inp_status,
+        "mobile_cls": mobile_cls,
+        "mobile_cls_status": mobile_cls_status,
+        "desktop_lcp_ms": desktop_lcp_ms,
+        "desktop_lcp_status": desktop_lcp_status,
         "overall_status": "Good" if mobile_perf >= 90 else "Needs Improvement" if mobile_perf >= 50 else "Poor"
     }
 
@@ -339,25 +424,34 @@ def main():
 
         if mobile_status == "success" or desktop_status == "success":
             summary = results.get("summary", {})
+            cwv_source = summary.get("cwv_source", "lighthouse_lab")
+            source_label = "[CrUX field data — real users]" if cwv_source == "crux_field_data" else "[Lighthouse lab — synthetic, may be WAF-inflated]"
+
             print(f"\n[Mobile] Performance:  {summary.get('mobile_performance', 'N/A')}/100")
             print(f"[Desktop] Performance: {summary.get('desktop_performance', 'N/A')}/100")
+            print(f"\n[CWV] Core Web Vitals (Mobile) {source_label}:")
 
             if summary.get('mobile_lcp_ms'):
                 lcp_ms = summary['mobile_lcp_ms']
                 lcp_s = lcp_ms / 1000
-                lcp_status = "GOOD" if lcp_ms < 2500 else "NEEDS IMPROVEMENT" if lcp_ms < 4000 else "POOR"
-                print(f"\n[CWV] Core Web Vitals (Mobile):")
+                lcp_status = summary.get('mobile_lcp_status', 'GOOD' if lcp_ms < 2500 else 'NEEDS IMPROVEMENT' if lcp_ms < 4000 else 'POOR')
                 print(f"   LCP: {lcp_s:.2f}s [{lcp_status}] (target: < 2.5s)")
+
+            if summary.get('mobile_inp_ms') is not None:
+                inp_ms = summary['mobile_inp_ms']
+                inp_status = summary.get('mobile_inp_status', 'GOOD' if inp_ms < 200 else 'NEEDS IMPROVEMENT' if inp_ms < 500 else 'POOR')
+                print(f"   INP: {inp_ms:.0f}ms [{inp_status}] (target: < 200ms)")
 
             if summary.get('mobile_cls') is not None:
                 cls = summary['mobile_cls']
-                cls_status = "GOOD" if cls < 0.1 else "NEEDS IMPROVEMENT" if cls < 0.25 else "POOR"
+                cls_status = summary.get('mobile_cls_status', 'GOOD' if cls < 0.1 else 'NEEDS IMPROVEMENT' if cls < 0.25 else 'POOR')
                 print(f"   CLS: {cls:.3f} [{cls_status}] (target: < 0.1)")
 
-            if summary.get('mobile_inp_ms'):
-                inp_ms = summary['mobile_inp_ms']
-                inp_status = "GOOD" if inp_ms < 200 else "NEEDS IMPROVEMENT" if inp_ms < 500 else "POOR"
-                print(f"   INP: {inp_ms:.0f}ms [{inp_status}] (target: < 200ms)")
+            if summary.get('desktop_lcp_ms'):
+                desktop_lcp_ms = summary['desktop_lcp_ms']
+                desktop_lcp_s = desktop_lcp_ms / 1000
+                desktop_lcp_status = summary.get('desktop_lcp_status', 'GOOD' if desktop_lcp_ms < 2500 else 'NEEDS IMPROVEMENT')
+                print(f"\n[CWV] Desktop LCP: {desktop_lcp_s:.2f}s [{desktop_lcp_status}]")
 
             print(f"\n[Status] Overall: {summary.get('overall_status', 'Unknown')}")
         else:
@@ -367,7 +461,11 @@ def main():
     else:
         if results.get("status") == "success":
             scores = results.get("scores", {})
-            cwv = results.get("core_web_vitals", {})
+            crux = results.get("crux_field_data", {})
+            lab = results.get("core_web_vitals_lab", {})
+            cwv_source = results.get("cwv_source", "lighthouse_lab")
+            cwv = crux if crux else lab
+            source_label = "[CrUX field data]" if crux else "[Lighthouse lab — synthetic]"
 
             print(f"\n[Scores] Lighthouse Scores:")
             print(f"   Performance:   {scores.get('performance', 0)}/100")
@@ -375,13 +473,19 @@ def main():
             print(f"   Accessibility: {scores.get('accessibility', 0)}/100")
             print(f"   Best Practices:{scores.get('best_practices', 0)}/100")
 
-            if cwv.get('lcp'):
-                print(f"\n[CWV] Core Web Vitals:")
-                print(f"   LCP: {cwv['lcp']/1000:.2f}s ({cwv.get('lcp_status', 'Unknown')})")
-            if cwv.get('inp') is not None:
-                print(f"   INP: {cwv['inp']:.0f}ms ({cwv.get('inp_status', 'Unknown')})")
-            if cwv.get('cls') is not None:
-                print(f"   CLS: {cwv['cls']:.3f} ({cwv.get('cls_status', 'Unknown')})")
+            lcp_ms = cwv.get('lcp_ms') or cwv.get('lcp')
+            inp_ms = cwv.get('inp_ms') or cwv.get('inp')
+            cls_val = cwv.get('cls')
+            if lcp_ms:
+                lcp_cat = cwv.get('lcp_category') or cwv.get('lcp_status', 'Unknown')
+                print(f"\n[CWV] Core Web Vitals {source_label}:")
+                print(f"   LCP: {lcp_ms/1000:.2f}s ({lcp_cat})")
+            if inp_ms is not None:
+                inp_cat = cwv.get('inp_category') or cwv.get('inp_status', 'Unknown')
+                print(f"   INP: {inp_ms:.0f}ms ({inp_cat})")
+            if cls_val is not None:
+                cls_cat = cwv.get('cls_category') or cwv.get('cls_status', 'Unknown')
+                print(f"   CLS: {cls_val:.3f} ({cls_cat})")
 
             failed_audits = results.get("seo_audits", {})
             if failed_audits:
