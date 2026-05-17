@@ -132,6 +132,53 @@ def url_to_slug(url: str) -> str:
     return slug
 
 
+def extract_schema_types(data, _depth: int = 0, _max_depth: int = 10):
+    """
+    Recursively extract all @type values from a JSON-LD object at any nesting depth.
+
+    Handles:
+    - @graph arrays (enterprise pattern used by Molex, Adobe, etc.)
+    - Deeply nested entities: publisher, breadcrumb, mainEntity, includesObject, typeOfGood, etc.
+    - Lists of schema objects
+    - Multi-value @type arrays (e.g. "@type": ["Organization", "LocalBusiness"])
+
+    Returns:
+        (types: list[str], has_org_same_as: bool)
+        types           — all @type strings found, ordered by first appearance, no duplicates
+        has_org_same_as — True if any Organization or Person entity has a sameAs property
+    """
+    types: list = []
+    seen: set = set()
+    has_org_same_as: bool = False
+
+    def _walk(node, depth: int) -> None:
+        nonlocal has_org_same_as
+        if depth > _max_depth or node is None:
+            return
+        if isinstance(node, dict):
+            t = node.get("@type")
+            if t:
+                for item in (t if isinstance(t, list) else [t]):
+                    if item and item not in seen:
+                        seen.add(item)
+                        types.append(item)
+            # Track sameAs presence on entity types
+            if t in ("Organization", "Person") and node.get("sameAs"):
+                has_org_same_as = True
+            # Recurse into every value except bare @context strings
+            for k, v in node.items():
+                if k == "@context":
+                    continue
+                if isinstance(v, (dict, list)):
+                    _walk(v, depth + 1)
+        elif isinstance(node, list):
+            for item in node:
+                _walk(item, depth + 1)
+
+    _walk(data, _depth)
+    return types, has_org_same_as
+
+
 def get_tmp_file(slug: str, file_type: str) -> str:
     """
     Generate consistent .tmp file path.

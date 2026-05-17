@@ -26,7 +26,7 @@ if sys.platform == "win32":
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from utils import smart_fetch
+from utils import smart_fetch, extract_schema_types
 
 try:
     import requests
@@ -128,48 +128,40 @@ def check_schema(url: str) -> dict:
         for script in schema_scripts:
             try:
                 data = json.loads(script.string or "{}")
-
-                # Handle both single objects and arrays
-                if isinstance(data, dict):
-                    schema_list = [data]
-                elif isinstance(data, list):
-                    schema_list = data
-                else:
-                    continue
-
-                for item in schema_list:
-                    if isinstance(item, dict):
-                        schema_type = item.get("@type")
-                        if schema_type:
-                            schema_types.add(schema_type)
-                            result["schema_types"].append(schema_type)
-
-                            # Check for specific AEO/GEO-friendly schemas
-                            if schema_type == "FAQPage":
-                                has_faq = True
-                                score_points += 20
-                                result["findings"].append("✓ FAQPage schema detected (great for GEO)")
-                            elif schema_type in ["Article", "BlogPosting", "NewsArticle"]:
-                                has_article = True
-                                score_points += 15
-                                result["findings"].append(f"✓ {schema_type} schema detected")
-                            elif schema_type == "LocalBusiness":
-                                has_local_business = True
-                                score_points += 20
-                                result["findings"].append("✓ LocalBusiness schema detected")
-                            elif schema_type == "BreadcrumbList":
-                                has_breadcrumb = True
-                                score_points += 10
-                                result["findings"].append("✓ BreadcrumbList schema detected")
-                            elif schema_type == "Organization":
-                                has_organization = True
-                                score_points += 15
-                                result["findings"].append("✓ Organization schema detected")
-                            elif schema_type == "WebSite":
-                                has_website = True
-                                score_points += 10
-                                result["findings"].append("✓ WebSite schema detected")
-
+                # Recursively extract every @type at any nesting depth
+                # (handles @graph, nested publisher/breadcrumb/mainEntity, etc.)
+                types, same_as = extract_schema_types(data)
+                for schema_type in types:
+                    if schema_type in schema_types:
+                        continue
+                    schema_types.add(schema_type)
+                    result["schema_types"].append(schema_type)
+                    if schema_type == "FAQPage":
+                        has_faq = True
+                        score_points += 20
+                        result["findings"].append("✓ FAQPage schema detected (great for GEO)")
+                    elif schema_type in ["Article", "BlogPosting", "NewsArticle"]:
+                        has_article = True
+                        score_points += 15
+                        result["findings"].append(f"✓ {schema_type} schema detected")
+                    elif schema_type == "LocalBusiness":
+                        has_local_business = True
+                        score_points += 20
+                        result["findings"].append("✓ LocalBusiness schema detected")
+                    elif schema_type == "BreadcrumbList":
+                        has_breadcrumb = True
+                        score_points += 10
+                        result["findings"].append("✓ BreadcrumbList schema detected")
+                    elif schema_type == "Organization":
+                        has_organization = True
+                        score_points += 15
+                        result["findings"].append("✓ Organization schema detected")
+                    elif schema_type == "WebSite":
+                        has_website = True
+                        score_points += 10
+                        result["findings"].append("✓ WebSite schema detected")
+                if same_as and has_organization:
+                    result["findings"].append("✓ Organization sameAs entity links present")
             except json.JSONDecodeError:
                 result["findings"].append("WARNING: Found invalid JSON-LD schema block")
 

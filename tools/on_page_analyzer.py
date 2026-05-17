@@ -38,7 +38,7 @@ import os as _os
 _sys_path_tools = _os.path.dirname(_os.path.abspath(__file__))
 if _sys_path_tools not in sys.path:
     sys.path.insert(0, _sys_path_tools)
-from utils import smart_fetch
+from utils import smart_fetch, extract_schema_types
 
 try:
     import requests
@@ -220,15 +220,40 @@ def analyze_page(url: str, keyword: str = None) -> dict:
         if result["noindex"]:
             result["issues"].append("CRITICAL: Page has noindex tag!")
 
+        # --- Schema ---
+        # Must run BEFORE word-count decompose, which removes all <script> tags from the tree.
+        # Recursive extraction handles @graph, nested entities, multi-type @type arrays.
+        schema_types = []
+        schema_same_as = False
+        seen_schema = set()
+        for script in soup.find_all("script", attrs={"type": "application/ld+json"}):
+            try:
+                data = json.loads(script.string or "{}")
+                types, same_as = extract_schema_types(data)
+                for t in types:
+                    if t not in seen_schema:
+                        seen_schema.add(t)
+                        schema_types.append(t)
+                schema_same_as = schema_same_as or same_as
+            except Exception:
+                pass
+        result["schema_types"] = schema_types
+        result["schema_same_as"] = schema_same_as
+        if not schema_same_as and any(t in seen_schema for t in ("Organization", "Person")):
+            result["issues"].append("MEDIUM: Schema Organization/Person missing 'sameAs' entity validation (E-E-A-T gap)")
+        if not schema_types:
+            result["issues"].append("MEDIUM: No JSON-LD schema found — add Article/FAQ schema for AEO")
+
         # --- Word Count ---
+        # decompose() removes script/style/nav/footer from the tree — runs after schema extraction
         for tag in soup(["script", "style", "nav", "footer", "header"]):
             tag.decompose()
-        
+
         body_text = soup.get_text(separator=" ").strip()
         result["word_count"] = len(body_text.split())
         if result["word_count"] < 300:
             result["issues"].append(f"HIGH: Thin content ({result['word_count']} words)")
-            
+
         # --- Advanced CRO & Trust Signals ---
         # 1. Trust Signals
         has_phone = bool(re.search(r'\b\d{3}[-.\s]??\d{3}[-.\s]??\d{4}\b', body_text)) or bool(soup.find("a", href=re.compile(r'^tel:')))
@@ -240,7 +265,7 @@ def analyze_page(url: str, keyword: str = None) -> dict:
             "ssl_secure": url.startswith("https://")
         }
         if not (has_phone or has_email): result["issues"].append("MEDIUM: No visible contact info (Trust Signal)")
-        
+
         # 2. Intent-to-CTA Alignment
         ctas = soup.find_all(["a", "button"], class_=re.compile(r'(btn|button|cta)', re.I))
         cta_texts = [cta.get_text(strip=True) for cta in ctas if cta.get_text(strip=True)][:5]
@@ -254,35 +279,11 @@ def analyze_page(url: str, keyword: str = None) -> dict:
         author_link = soup.find("a", attrs={"rel": "author"})
         has_author = bool(author_meta) or bool(author_link) or bool(re.search(r'By\s+[A-Z][a-z]+\s+[A-Z][a-z]+', body_text[:1000]))
         result["ee_at_author"] = has_author
-        
+
         # 2. Expert Citations
         external_links = soup.find_all("a", href=re.compile(r'^https?://(?!' + re.escape(urlparse(url).netloc) + ')'))
         edu_gov_links = [link.get('href') for link in external_links if re.search(r'\.(edu|gov|org)', link.get('href', ''))]
         result["ee_at_citations"] = len(edu_gov_links)
-
-        # --- Schema ---
-        schema_types = []
-        schema_same_as = False
-        for script in soup.find_all("script", attrs={"type": "application/ld+json"}):
-            try:
-                data = json.loads(script.string or "{}")
-                if isinstance(data, dict): 
-                    schema_types.append(data.get("@type", "Unknown"))
-                    if "sameAs" in data and data.get("@type") in ["Organization", "Person"]: schema_same_as = True
-                elif isinstance(data, list): 
-                    for d in data:
-                        if isinstance(d, dict):
-                            schema_types.append(d.get("@type", "Unknown"))
-                            if "sameAs" in d and d.get("@type") in ["Organization", "Person"]: schema_same_as = True
-            except Exception:
-                pass
-        result["schema_types"] = schema_types
-        result["schema_same_as"] = schema_same_as
-        if not schema_same_as and ("Organization" in schema_types or "Person" in schema_types):
-            result["issues"].append("MEDIUM: Schema Organization/Person missing 'sameAs' entity validation (E-E-A-T gap)")
-        result["schema_types"] = schema_types
-        if not schema_types:
-            result["issues"].append("MEDIUM: No JSON-LD schema found — add Article/FAQ schema for AEO")
 
         result["overall_score"] = int(sum(scores) / max(len(scores), 1))
 
