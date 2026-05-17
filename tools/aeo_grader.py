@@ -29,6 +29,13 @@ from typing import Dict, List, Optional
 from datetime import datetime
 from urllib.parse import urlparse
 
+import os as _os
+import sys as _sys
+_tools_dir = _os.path.dirname(_os.path.abspath(__file__))
+if _tools_dir not in _sys.path:
+    _sys.path.insert(0, _tools_dir)
+from utils import smart_fetch
+
 try:
     import requests
     from bs4 import BeautifulSoup
@@ -87,7 +94,7 @@ class AEOGrader:
         results['factors']['concise_answers'] = self._detect_answer_blocks(content)
         results['factors']['structured_tables'] = self._detect_tables(content, html)
         results['factors']['data_citations'] = self._count_citations(content)
-        results['factors']['clear_headings'] = self._detect_headings(content)
+        results['factors']['clear_headings'] = self._detect_headings(content, html)
         results['factors']['freshness'] = self._check_freshness(content)
         results['factors']['multimedia'] = self._detect_multimedia(html) if html else 0
 
@@ -223,14 +230,16 @@ class AEOGrader:
 
         return citation_count
 
-    def _detect_headings(self, content: str) -> bool:
-        """Detect clear heading structure (H2, H3 in markdown)"""
-        # Markdown headings (## H2, ### H3)
+    def _detect_headings(self, content: str, html: Optional[str] = None) -> bool:
+        """Detect clear heading structure from HTML tags or Markdown fallback."""
+        if html:
+            soup = BeautifulSoup(html, 'html.parser')
+            headings = len(soup.find_all(['h2', 'h3']))
+            if headings >= 3:
+                return True
+        # Markdown fallback (## H2, ### H3) for .md file inputs
         heading_pattern = r'^#{2,3}\s+.+$'
-        headings = len(re.findall(heading_pattern, content, re.MULTILINE))
-
-        # Good heading structure: >=3 headings
-        return headings >= 3
+        return len(re.findall(heading_pattern, content, re.MULTILINE)) >= 3
 
     def _check_freshness(self, content: str) -> bool:
         """
@@ -431,34 +440,33 @@ class AEOGrader:
 
 
 def fetch_url_content(url: str) -> tuple:
-    """Fetch content from URL and return (text, html)"""
-    try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-        response = requests.get(url, headers=headers, timeout=15)
-        response.raise_for_status()
+    """Fetch content from URL using smart_fetch (curl_cffi -> DataForSEO fallback)."""
+    fetch = smart_fetch(url, timeout=30)
+    if not fetch["success"]:
+        print(f"[ERROR] Failed to fetch URL: {fetch['error']}")
+        sys.exit(1)
 
-        html = response.text
-        soup = BeautifulSoup(html, 'html.parser')
+    html = fetch.get("html") or ""
 
-        # Remove script and style elements
-        for script in soup(['script', 'style']):
-            script.decompose()
-
-        # Get text
-        text = soup.get_text()
-
-        # Clean up whitespace
-        lines = (line.strip() for line in text.splitlines())
-        chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-        text = '\n'.join(chunk for chunk in chunks if chunk)
-
+    # DataForSEO path: reconstruct minimal HTML from parsed fields
+    if fetch["method"] == "dataforseo" and fetch.get("parsed_data"):
+        pd = fetch["parsed_data"]
+        text = " ".join(filter(None, [
+            pd.get("title", ""),
+            pd.get("meta_description", ""),
+            " ".join(pd.get("h1", [])),
+            " ".join(pd.get("h2", [])),
+        ]))
         return text, html
 
-    except Exception as e:
-        print(f"[ERROR] Failed to fetch URL: {e}")
-        sys.exit(1)
+    soup = BeautifulSoup(html, 'html.parser')
+    # Remove style-only noise; keep script tags intact so FAQ schema is preserved in html
+    for tag in soup(['style', 'noscript']):
+        tag.decompose()
+    text = soup.get_text(separator='\n')
+    lines = (line.strip() for line in text.splitlines())
+    text = '\n'.join(line for line in lines if line)
+    return text, html
 
 
 def main():
